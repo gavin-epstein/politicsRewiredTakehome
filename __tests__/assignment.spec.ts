@@ -191,3 +191,54 @@ describe("triple opt out", () => {
     expect(messageId).not.toBeUndefined();
   });
 });
+
+describe("intermediate tests", () => {
+test("unsubscribe updates unsubscribed_phone_numbers", async () => {
+    const rows = await withPgMiddlewares(
+      pool,
+      [autoRollbackMiddleware],
+      async (client: PoolClient) => {
+        const toNumber = faker.phone.phoneNumber();
+        const body = faker.hacker.phrase();
+
+        const profiles = await setupFourProfiles(client);
+        const first = await sendMessage(client, profiles[0], toNumber, body);
+
+        await insertUnsubscribedDeliveryReport(client, first);
+        const result = await client.query("select unsubscribed_profiles from unsubscribed_phone_numbers where phone_number = $1",[toNumber])
+        return result.rows;
+      }
+    );
+    expect(rows.length).not.toBe(0);
+    });
+test("length of unsubscribed_profiles should be two after two distinct and one duplicate unsubscribes", async () => {
+    const profilearray = await withPgMiddlewares(
+      pool,
+      [autoRollbackMiddleware],
+      async (client: PoolClient) => {
+        const toNumber = faker.phone.phoneNumber();
+        const body = faker.hacker.phrase();
+
+        const profiles = await setupFourProfiles(client);
+
+        const first = await sendMessage(client, profiles[0], toNumber, body);
+        await insertUnsubscribedDeliveryReport(client, first);
+
+        const second = await sendMessage(client, profiles[1], toNumber, body);
+        await insertUnsubscribedDeliveryReport(client, second);
+
+        const third = await sendMessage(client, profiles[1], toNumber, body);
+        await insertUnsubscribedDeliveryReport(client, third);
+
+        const result = await client.query("select unsubscribed_profiles from unsubscribed_phone_numbers where phone_number = $1",[toNumber])
+        return result.rows[0].unsubscribed_profiles;
+        
+      }
+    );
+    const profilecount = profilearray.toString().split(",").length;
+    
+    expect(profilecount).toBe(2);
+    
+  });
+    
+});
